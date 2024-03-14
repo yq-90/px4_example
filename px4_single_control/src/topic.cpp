@@ -54,3 +54,11 @@ std::shared_ptr<const std::string> get_offboard_control_mode_topic(const std::st
                     px4_in_prefix(), "offboard_control_mode"));
     return ret;
 }
+
+std::shared_ptr<const std::string> get_update_traject_target_topic(const std::string &vehicle_name)
+{
+    static std::shared_ptr<const std::string> ret =
+        std::make_shared<const std::string>(build_topic(vehicle_name,
+                    px4_in_prefix(), "update_trajectory_target"));
+    return ret;
+}
