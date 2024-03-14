@@ -8,6 +8,7 @@
 #include "tf2_eigen/tf2_eigen.hpp"
 
 #include "frame_transforms/frame_transforms.hpp"
+#include "px4_topic/px4_topic.hpp"
 
 #include "Eigen/Eigen"
 #include "Eigen/Geometry"
@@ -53,12 +54,14 @@ class Bridge
 
                                 local_pose_publisher_->publish(pose);
 
+                                this->vehicle_odometry_ = msg;
                             });
             }
         rclcpp::Node::SharedPtr bridge_node;
     private:
         rclcpp::Subscription<VehicleOdomTy>::SharedPtr vehicle_odometry_subscription_;
         rclcpp::Publisher<PoseStampedTy>::SharedPtr local_pose_publisher_;
+        VehicleOdomTy vehicle_odometry_;
         Eigen::Quaterniond enu_q;
         Eigen::Vector3d enu_pose;
 };

@@ -14,6 +14,8 @@ find_package(px4_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(frame_transforms REQUIRED)
 find_package(tf2_eigen REQUIRED)
+find_package(px4_single_control REQUIRED)
+find_package(px4_topic REQUIRED)
 
 # uncomment the following section in order to fill in
 # further dependencies manually.
@@ -35,6 +37,8 @@ ament_target_dependencies(
   "sensor_msgs"
   "frame_transforms"
   "tf2_eigen"
+  "px4_single_control"
+  "px4_topic"
 )
 
 install(TARGETS px4_rviz2_bridge
