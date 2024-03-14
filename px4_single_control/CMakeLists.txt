@@ -20,7 +20,7 @@ find_package(px4_topic REQUIRED)
 # further dependencies manually.
 # find_package(<dependency> REQUIRED)
 
-add_executable(px4_single_control src/main.cpp src/control.cpp src/topic.cpp)
+add_executable(px4_single_control src/main.cpp src/control.cpp)
 target_include_directories(px4_single_control PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
