@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(px4_rviz2_bridge)
+project(px4_commander)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
@@ -21,15 +21,15 @@ find_package(px4_topic REQUIRED)
 # further dependencies manually.
 # find_package(<dependency> REQUIRED)
 
-add_executable(px4_rviz2_bridge src/main.cpp src/bridge.cpp)
+add_executable(px4_commander src/main.cpp src/commander.cpp)
 
-target_include_directories(px4_rviz2_bridge PUBLIC
+target_include_directories(px4_commander PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
 
-target_compile_features(px4_rviz2_bridge PUBLIC c_std_99 cxx_std_20)  # Require C99 and C++20
+target_compile_features(px4_commander PUBLIC c_std_99 cxx_std_20)  # Require C99 and C++20
 ament_target_dependencies(
-  px4_rviz2_bridge
+  px4_commander
   "rclcpp"
   "geometry_msgs"
   "nav_msgs"
@@ -41,7 +41,7 @@ ament_target_dependencies(
   "px4_topic"
 )
 
-install(TARGETS px4_rviz2_bridge
+install(TARGETS px4_commander
   DESTINATION lib/${PROJECT_NAME})
 
 if(BUILD_TESTING)

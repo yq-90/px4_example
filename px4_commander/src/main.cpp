@@ -4,15 +4,15 @@
 #include <string>
 #include <chrono>
 
-#include "px4_rviz2_bridge/bridge.hpp"
+#include "px4_commander/commander.hpp"
 
 using namespace std::chrono_literals;
 
 int main(int argc, char ** argv)
 {
     rclcpp::init(argc, argv);
-    auto bridge = Bridge("px4_rviz2_bridge");
+    auto commander = Commander("px4_commander");
 
-    rclcpp::spin(bridge.bridge_node);
+    rclcpp::spin(commander.commander_node);
     return 0;
 }

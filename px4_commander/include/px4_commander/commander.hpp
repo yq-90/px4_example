@@ -1,5 +1,5 @@
-#ifndef BRIDGE_HPP
-#define BRIDGE_HPP
+#ifndef COMMANDER_HPP
+#define COMMANDER_HPP
 
 #include "rclcpp/rclcpp.hpp"
 #include "px4_msgs/msg/vehicle_odometry.hpp"
@@ -17,7 +17,7 @@
 #include <array>
 #include <memory>
 
-class Bridge
+class Commander
 {
     public:
         using VehOdomTy = px4_msgs::msg::VehicleOdometry;
@@ -26,13 +26,13 @@ class Bridge
         using TrajSetptTy = px4_msgs::msg::TrajectorySetpoint;
         using GoalPoseStampedTy = geometry_msgs::msg::PoseStamped;
 
-        Bridge(const std::string &name, const std::string &vehicle_name = "") :
-            bridge_node(std::make_shared<rclcpp::Node>(name)), vehicle_name_(vehicle_name) {
+        Commander(const std::string &name, const std::string &vehicle_name = "") :
+            commander_node(std::make_shared<rclcpp::Node>(name)), vehicle_name_(vehicle_name) {
                 local_pose_publisher_ =
-                    this->bridge_node->create_publisher<PoseStampedTy>("/px4_rviz2_bridge/pose",
+                    this->commander_node->create_publisher<PoseStampedTy>("/px4_rviz2_bridge/pose",
                             rclcpp::SystemDefaultsQoS());
                 vehicle_odometry_subscription_ =
-                    this->bridge_node->create_subscription<VehOdomTy>(
+                    this->commander_node->create_subscription<VehOdomTy>(
                             *px4_topic::get_vehicle_odometry_topic(this->vehicle_name_),
                             rclcpp::SystemDefaultsQoS(),
                             [this](const VehOdomTy &msg) -> void {
@@ -43,9 +43,9 @@ class Bridge
 
                                 pose.header.frame_id = "link";
                                 pose.header.stamp.sec =
-                                    this->bridge_node->get_clock()->now().seconds();
+                                    this->commander_node->get_clock()->now().seconds();
                                 pose.header.stamp.nanosec =
-                                    this->bridge_node->get_clock()->now().nanoseconds();
+                                    this->commander_node->get_clock()->now().nanoseconds();
 
                                 this->enu_q = px4_to_ros_orientation(Quaterniond(
                                             msg.q[0], msg.q[1], msg.q[2], msg.q[3]));
@@ -61,7 +61,7 @@ class Bridge
                                 this->vehicle_odometry_ = msg;
                             });
 
-                update_trajecotry_target_publisher_ = this->bridge_node->create_publisher<TrajSetptTy>(
+                update_trajecotry_target_publisher_ = this->commander_node->create_publisher<TrajSetptTy>(
                         *px4_topic::get_update_traject_target_topic(vehicle_name_),
                         rclcpp::SystemDefaultsQoS());
                 auto update_goal = [this](const GoalPoseStampedTy &msg) -> void {
@@ -83,18 +83,18 @@ class Bridge
                     // Keeping the altitude
                     traj_target.position[2] = this->vehicle_odometry_.position[2];
 
-                    RCLCPP_DEBUG(this->bridge_node->get_logger(), "Goal (NED): {%f, %f, %f}",
+                    RCLCPP_DEBUG(this->commander_node->get_logger(), "Goal (NED): {%f, %f, %f}",
                             goal_ned_pose[0], goal_ned_pose[1], goal_ned_pose[2]);
-                    RCLCPP_DEBUG(this->bridge_node->get_logger(), "Goal (ENU): {%f, %f, %f}",
+                    RCLCPP_DEBUG(this->commander_node->get_logger(), "Goal (ENU): {%f, %f, %f}",
                             msg.pose.position.x, msg.pose.position.y, msg.pose.position.z);
                     traj_target.yaw = quaternion_get_yaw(goal_ned_q);
                     this->update_trajecotry_target_publisher_->publish(traj_target);
                 };
                 goal_pose_subscription_ =
-                    this->bridge_node->create_subscription<GoalPoseStampedTy>("/goal_pose",
+                    this->commander_node->create_subscription<GoalPoseStampedTy>("/goal_pose",
                             rclcpp::SystemDefaultsQoS(), update_goal);
             }
-        rclcpp::Node::SharedPtr bridge_node;
+        rclcpp::Node::SharedPtr commander_node;
     private:
         const std::string vehicle_name_;
 

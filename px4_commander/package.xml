@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>px4_rviz2_bridge</name>
+  <name>px4_commander</name>
   <version>0.0.0</version>
   <description>TODO: Package description</description>
   <maintainer email="yq_90@protonmail.com">Yiqun Chen</maintainer>
