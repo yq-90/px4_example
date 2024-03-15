@@ -7,8 +7,6 @@
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "tf2_eigen/tf2_eigen.hpp"
 #include "px4_msgs/msg/trajectory_setpoint.hpp"
-#include "geometry_msgs/msg/transform_stamped.hpp"
-#include "tf2_ros/transform_broadcaster.h"
 
 #include "frame_transforms/frame_transforms.hpp"
 #include "px4_topic/px4_topic.hpp"
@@ -22,7 +20,7 @@
 class Bridge
 {
     public:
-        using VehicleOdomTy = px4_msgs::msg::VehicleOdometry;
+        using VehOdomTy = px4_msgs::msg::VehicleOdometry;
         using PoseStampedTy = geometry_msgs::msg::PoseStamped;
         using OdomTy = nav_msgs::msg::Odometry;
         using TrajSetptTy = px4_msgs::msg::TrajectorySetpoint;
@@ -34,9 +32,10 @@ class Bridge
                     this->bridge_node->create_publisher<PoseStampedTy>("/px4_rviz2_bridge/pose",
                             rclcpp::SystemDefaultsQoS());
                 vehicle_odometry_subscription_ =
-                    this->bridge_node->create_subscription<VehicleOdomTy>("/fmu/out/vehicle_odometry",
+                    this->bridge_node->create_subscription<VehOdomTy>(
+                            *px4_topic::get_vehicle_odometry_topic(this->vehicle_name_),
                             rclcpp::SystemDefaultsQoS(),
-                            [this](const VehicleOdomTy &msg) -> void {
+                            [this](const VehOdomTy &msg) -> void {
                                 using namespace frame_transforms;
                                 using namespace Eigen;
                                 PoseStampedTy pose = PoseStampedTy();
@@ -61,40 +60,6 @@ class Bridge
 
                                 this->vehicle_odometry_ = msg;
                             });
-
-                base_link_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*bridge_node);
-
-                auto update_tf = [this](const VehicleOdomTy &msg) -> void {
-                    using namespace Eigen;
-                    using namespace frame_transforms;
-
-                    geometry_msgs::msg::TransformStamped t;
-
-                    t.header.stamp = this->bridge_node->get_clock()->now();
-                    t.header.frame_id = "link";
-                    t.child_frame_id = "base_link";
-
-                    Quaterniond enu_q = px4_to_ros_orientation(Quaterniond(
-                                msg.q[0], msg.q[1], msg.q[2], msg.q[3]));
-
-                    Vector3d enu_pose = ned_to_enu_local_frame(Vector3d(
-                                {msg.position[0], msg.position[1], msg.position[2]}));
-
-                    t.transform.translation.x = enu_pose[0];
-                    t.transform.translation.y = enu_pose[1];
-                    t.transform.translation.z = enu_pose[2];
-
-                    t.transform.rotation.x = enu_q.x();
-                    t.transform.rotation.y = enu_q.y();
-                    t.transform.rotation.z = enu_q.z();
-                    t.transform.rotation.w = enu_q.w();
-
-                    this->base_link_broadcaster_->sendTransform(t);
-                };
-                update_base_link_tf_ =
-                    this->bridge_node->create_subscription<VehicleOdomTy>(
-                            *px4_topic::get_vehicle_odometry_topic(vehicle_name),
-                            rclcpp::SystemDefaultsQoS(), update_tf);
 
                 update_trajecotry_target_publisher_ = this->bridge_node->create_publisher<TrajSetptTy>(
                         *px4_topic::get_update_traject_target_topic(vehicle_name_),
@@ -133,15 +98,12 @@ class Bridge
     private:
         const std::string vehicle_name_;
 
-        rclcpp::Subscription<VehicleOdomTy>::SharedPtr vehicle_odometry_subscription_;
+        rclcpp::Subscription<VehOdomTy>::SharedPtr vehicle_odometry_subscription_;
         rclcpp::Publisher<PoseStampedTy>::SharedPtr local_pose_publisher_;
-        VehicleOdomTy vehicle_odometry_;
+        VehOdomTy vehicle_odometry_;
 
         rclcpp::Publisher<TrajSetptTy>::SharedPtr update_trajecotry_target_publisher_;
         rclcpp::Subscription<GoalPoseStampedTy>::SharedPtr goal_pose_subscription_;
-
-        rclcpp::Subscription<VehicleOdomTy>::SharedPtr update_base_link_tf_;
-        std::unique_ptr<tf2_ros::TransformBroadcaster> base_link_broadcaster_;
 
         Eigen::Quaterniond enu_q;
         Eigen::Vector3d enu_pose;
