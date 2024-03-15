@@ -48,7 +48,7 @@ class Bridge
                                 pose.header.stamp.nanosec =
                                     this->bridge_node->get_clock()->now().nanoseconds();
 
-                                this->enu_q = ned_to_enu_orientation(Quaterniond(
+                                this->enu_q = px4_to_ros_orientation(Quaterniond(
                                             msg.q[0], msg.q[1], msg.q[2], msg.q[3]));
 
                                 enu_pose = ned_to_enu_local_frame(Vector3d(
@@ -74,7 +74,7 @@ class Bridge
                     t.header.frame_id = "link";
                     t.child_frame_id = "base_link";
 
-                    Quaterniond enu_q = ned_to_enu_orientation(Quaterniond(
+                    Quaterniond enu_q = px4_to_ros_orientation(Quaterniond(
                                 msg.q[0], msg.q[1], msg.q[2], msg.q[3]));
 
                     Vector3d enu_pose = ned_to_enu_local_frame(Vector3d(
