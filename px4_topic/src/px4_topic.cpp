@@ -5,13 +5,13 @@ namespace px4_topic
 
     const std::string &px4_in_prefix()
     {
-        static const std::string in_prefix("/fmu/in/");
+        static const std::string in_prefix("fmu/in");
         return in_prefix;
     }
 
     const std::string &px4_out_prefix()
     {
-        static const std::string out_prefix("/fmu/out/");
+        static const std::string out_prefix("fmu/out");
         return out_prefix;
     }
 
@@ -20,7 +20,10 @@ namespace px4_topic
             const std::string &topic)
     {
         std::stringstream ss;
-        ss << vehicle_name << io << topic;
+        if (vehicle_name.length() != 0)
+            ss << '/' << vehicle_name;
+
+        ss << '/' << io << '/' << topic;
         return ss.str();
     }
 
