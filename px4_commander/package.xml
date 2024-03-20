@@ -16,11 +16,9 @@
   <depend>nav_msgs</depend>
   <depend>geometry_msgs</depend>
   <depend>sensor_msgs</depend>
-  <depend>px4_msgs</depend>
   <depend>tf2_eigen</depend>
   <depend>frame_transforms</depend>
   <depend>px4_single_control</depend>
-  <depend>px4_topic</depend>
 
   <export>
     <build_type>ament_cmake</build_type>

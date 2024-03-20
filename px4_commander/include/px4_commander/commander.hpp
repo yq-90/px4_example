@@ -2,16 +2,13 @@
 #define COMMANDER_HPP
 
 #include "rclcpp/rclcpp.hpp"
-#include "px4_msgs/msg/vehicle_odometry.hpp"
 #include "nav_msgs/msg/odometry.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "tf2_eigen/tf2_eigen.hpp"
-#include "px4_msgs/msg/trajectory_setpoint.hpp"
 #include "geometry_msgs/msg/transform_stamped.hpp"
 #include "tf2_ros/transform_broadcaster.h"
 
 #include "frame_transforms/frame_transforms.hpp"
-#include "px4_topic/px4_topic.hpp"
 
 #include "Eigen/Eigen"
 #include "Eigen/Geometry"
