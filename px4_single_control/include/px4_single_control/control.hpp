@@ -45,13 +45,15 @@ class Control {
 
         Control(const std::string &node_name,
                 const uint16_t instance_id = 0,
+                bool need_prefix = false,
                 const std::string &vehicle_prefix = "px4_",
                 const std::string &commanding_frame = "base_link",
-                bool need_prefix = false) :
+                float default_height = 10) :
             ros_instance_id_(instance_id), mavlink_system_id_(1 + instance_id),
             commanding_frame_(commanding_frame),
             vehicle_name_(vehicle_prefix + std::to_string(instance_id)),
             frame_(vehicle_name_ + "_link"),
+            height_(default_height),
             offboard_control_mode_topic_(TOPIC_INITIALIZER(offboard_control_mode)),
             vehicle_command_topic_(TOPIC_INITIALIZER(vehicle_command)),
             trajectory_setpoint_topic_(TOPIC_INITIALIZER(trajectory_setpoint)),
@@ -79,7 +81,7 @@ class Control {
                             trajectory_setpoint_topic_,
                             rclcpp::SystemDefaultsQoS());
 
-                traj_target_.position = {0.0, 0.0, -10.0};
+                traj_target_.position = {0.0, 0.0, -height_};
 
                 auto heartbeat_cb = [this]() -> void {
                     this->updateOffboardControlModeTimestamp();
@@ -200,7 +202,7 @@ class Control {
 
                     RCLCPP_DEBUG(this->node->get_logger(), "Setting pose: {%f, %f, %f}",
                             pose_ned[0], pose_ned[1], pose_ned[2]);
-                    setTrajSetpoint(pose_ned[0], pose_ned[1], -10.0,
+                    setTrajSetpoint(pose_ned[0], pose_ned[1], -this->height_,
                             frame_transforms::utils::quaternion::quaternion_get_yaw(q_ned));
                 };
 
@@ -222,6 +224,7 @@ class Control {
         void arm();
 
         void setTrajSetpoint(float x, float y, float z, float yaw);
+        void setHeight(float h);
 
         rclcpp::Node::SharedPtr node;
 
@@ -232,6 +235,8 @@ class Control {
         const std::string commanding_frame_;
         const std::string vehicle_name_;
         const std::string frame_;
+
+        float height_;
 
         const std::string offboard_control_mode_topic_;
         const std::string vehicle_command_topic_;

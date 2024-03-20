@@ -54,3 +54,8 @@ void Control::setTrajSetpoint(float x, float y, float z, float yaw)
     this->traj_target_.yaw = yaw;
     this->traj_target_.timestamp = this->node->get_clock()->now().nanoseconds() / 1000;
 }
+
+void Control::setHeight(float h)
+{
+    this->height_ = h;
+}
