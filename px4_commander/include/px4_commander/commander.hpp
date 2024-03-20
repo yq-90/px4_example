@@ -25,10 +25,8 @@ class Commander
         using OdomTy = nav_msgs::msg::Odometry;
         using GoalPoseStampedTy = geometry_msgs::msg::PoseStamped;
 
-        Commander(const std::string &name,
-                const std::string &frame = "base_link") :
-            commander_node(std::make_shared<rclcpp::Node>(name)), frame_(frame),
-            base_link_transform_(geometry_msgs::msg::TransformStamped{}) {
+        Commander(rclcpp::Node::SharedPtr node) :
+            commander_node(node), frame_(node->get_parameter("frame").as_string()) {
 
                 command_frame_broadcaster_ =
                     std::make_unique<tf2_ros::TransformBroadcaster>(*commander_node);

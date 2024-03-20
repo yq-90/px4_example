@@ -8,11 +8,18 @@
 
 using namespace std::chrono_literals;
 
+static void initialize_parameters(rclcpp::Node::SharedPtr node)
+{
+    node->declare_parameter("frame", "base_link");
+}
+
 int main(int argc, char ** argv)
 {
     rclcpp::init(argc, argv);
-    auto commander = Commander("px4_commander");
+    auto cmd_node = std::make_shared<rclcpp::Node>("commander");
+    initialize_parameters(cmd_node);
+    auto commander = Commander(cmd_node);
 
-    rclcpp::spin(commander.commander_node);
+    rclcpp::spin(cmd_node);
     return 0;
 }
