@@ -45,7 +45,7 @@ void Control::arm()
     cmd.from_external = true;
     cmd.timestamp = this->node->get_clock()->now().nanoseconds() / 1000;
     this->vehicle_command_publisher_->publish(cmd);
-    RCLCPP_INFO(this->node->get_logger(), "Arming");
+    RCLCPP_DEBUG(this->node->get_logger(), "Arming");
 }
 
 void Control::setTrajSetpoint(float x, float y, float z, float yaw)
