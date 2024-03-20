@@ -23,9 +23,14 @@
 #include "Eigen/Eigen"
 #include "Eigen/Geometry"
 
-#include "px4_topic/px4_topic.hpp"
+#include "px4_single_control/topic.hpp"
 
 using namespace std::chrono_literals;
+
+#define TOPIC_INITIALIZER(TOPIC_NAME) \
+    ((!instance_id && !need_prefix) ? \
+     get_##TOPIC_NAME##_topic() : \
+     (vehicle_name_ + get_##TOPIC_NAME##_topic()))
 
 class Control {
     public:
@@ -43,16 +48,17 @@ class Control {
                 const std::string &vehicle_prefix = "px4_",
                 const std::string &commanding_frame = "base_link",
                 bool need_prefix = false) :
-            commanding_frame_(commanding_frame), ros_instance_id_(instance_id),
-            mavlink_system_id_(1 + instance_id) {
+            ros_instance_id_(instance_id), mavlink_system_id_(1 + instance_id),
+            commanding_frame_(commanding_frame),
+            vehicle_name_(vehicle_prefix + std::to_string(instance_id)),
+            frame_(vehicle_name_ + "_link"),
+            offboard_control_mode_topic_(TOPIC_INITIALIZER(offboard_control_mode)),
+            vehicle_command_topic_(TOPIC_INITIALIZER(vehicle_command)),
+            trajectory_setpoint_topic_(TOPIC_INITIALIZER(trajectory_setpoint)),
+            vehicle_odometry_topic_(TOPIC_INITIALIZER(vehicle_odometry)),
+            update_trajectory_target_topic_(TOPIC_INITIALIZER(update_trajectory_target)) {
 
                 node = std::make_shared<rclcpp::Node>(node_name);
-
-                std::stringstream ss;
-                ss << vehicle_prefix << instance_id;
-                this->vehicle_name_ = ss.str();
-                ss << "_link";
-                this->frame_ = ss.str();
 
                 offboard_control_mode_profile_.position = true;
                 offboard_control_mode_profile_.velocity = false;
@@ -62,22 +68,23 @@ class Control {
 
                 offboard_control_mode_publisher_ =
                     node->create_publisher<OffCtrlModeTy>(
-                            *px4_topic::get_offboard_control_mode_topic(vehicle_name_),
+                            offboard_control_mode_topic_,
                             rclcpp::SystemDefaultsQoS());
                 vehicle_command_publisher_ =
                     node->create_publisher<VehCmdTy>(
-                            *px4_topic::get_vehicle_command_topic(vehicle_name_),
+                            vehicle_command_topic_,
                             rclcpp::SystemDefaultsQoS());
                 trajectory_setpoint_publisher_ =
                     node->create_publisher<TrajSetptTy>(
-                            *px4_topic::get_trajectory_setpoint_topic(vehicle_name_),
+                            trajectory_setpoint_topic_,
                             rclcpp::SystemDefaultsQoS());
 
                 traj_target_.position = {0.0, 0.0, -10.0};
 
                 auto heartbeat_cb = [this]() -> void {
                     this->updateOffboardControlModeTimestamp();
-                    offboard_control_mode_publisher_->publish(this->offboard_control_mode_profile_);
+                    offboard_control_mode_publisher_->publish(
+                            this->offboard_control_mode_profile_);
 
                     this->traj_target_.timestamp =
                         this->node->get_clock()->now().nanoseconds() / 1000;
@@ -118,7 +125,7 @@ class Control {
                 };
                 update_vehicle_odometry_subscription_ =
                     this->node->create_subscription<VehOdomTy>(
-                            *px4_topic::get_vehicle_odometry_topic(vehicle_name_),
+                            vehicle_odometry_topic_,
                             rclcpp::SystemDefaultsQoS(), update_odom);
 
                 auto update_trajectory_target = [this] (const TrajSetptTy &msg) -> void {
@@ -126,7 +133,7 @@ class Control {
                 };
                 update_trajecotry_target_subscription_ =
                     this->node->create_subscription<TrajSetptTy>(
-                            px4_topic::get_update_traject_target_topic(vehicle_name_)->c_str(),
+                            update_trajectory_target_topic_,
                             rclcpp::SystemDefaultsQoS(), update_trajectory_target);
 
 #ifdef URANUS_DEBUG
@@ -219,12 +226,18 @@ class Control {
         rclcpp::Node::SharedPtr node;
 
     private:
-        std::string vehicle_name_;
-        std::string frame_;
-        const std::string commanding_frame_;
-
         const uint16_t ros_instance_id_;
         const uint16_t mavlink_system_id_;
+
+        const std::string commanding_frame_;
+        const std::string vehicle_name_;
+        const std::string frame_;
+
+        const std::string offboard_control_mode_topic_;
+        const std::string vehicle_command_topic_;
+        const std::string trajectory_setpoint_topic_;
+        const std::string vehicle_odometry_topic_;
+        const std::string update_trajectory_target_topic_;
 
         rclcpp::TimerBase::SharedPtr heartbeat_timer_;
         rclcpp::TimerBase::SharedPtr oneoff_timer_;

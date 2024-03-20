@@ -15,12 +15,11 @@ find_package(eigen3_cmake_module REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(frame_transforms REQUIRED)
 find_package(tf2_ros REQUIRED)
-find_package(px4_topic REQUIRED)
 # uncomment the following section in order to fill in
 # further dependencies manually.
 # find_package(<dependency> REQUIRED)
 
-add_executable(px4_single_control src/main.cpp src/control.cpp)
+add_executable(px4_single_control src/main.cpp src/control.cpp src/topic.cpp)
 target_include_directories(px4_single_control PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
@@ -33,7 +32,6 @@ ament_target_dependencies(
   "Eigen3"
   "frame_transforms"
   "tf2_ros"
-  "px4_topic"
 )
 
 install(TARGETS px4_single_control
