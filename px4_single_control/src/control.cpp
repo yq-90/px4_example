@@ -5,14 +5,14 @@ void Control::updateOffboardControlModeTimestamp()
     // FIXME This function is in a timer callback
     // There would be a division every hundreds of microseconds
     this->offboard_control_mode_profile_.timestamp =
-        this->node->get_clock()->now().nanoseconds() / 1000;
+        this->control_node->get_clock()->now().nanoseconds() / 1000;
 }
 
 void Control::updateOffboardControlMode(const OffCtrlModeTy &rhs)
 {
     this->offboard_control_mode_profile_ = rhs;
     this->offboard_control_mode_profile_.timestamp =
-        this->node->get_clock()->now().nanoseconds() / 1000;
+        this->control_node->get_clock()->now().nanoseconds() / 1000;
 }
 
 void Control::setOffboardMode()
@@ -28,9 +28,9 @@ void Control::setOffboardMode()
     cmd.source_system = 1;
     cmd.source_component = 1;
     cmd.from_external = true;
-    cmd.timestamp = this->node->get_clock()->now().nanoseconds() / 1000;
+    cmd.timestamp = this->control_node->get_clock()->now().nanoseconds() / 1000;
     this->vehicle_command_publisher_->publish(cmd);
-    RCLCPP_DEBUG(this->node->get_logger(), "Setting Offboard Mode");
+    RCLCPP_DEBUG(this->control_node->get_logger(), "Setting Offboard Mode");
 }
 
 void Control::arm()
@@ -43,16 +43,16 @@ void Control::arm()
     cmd.source_system = 1;
     cmd.source_component = 1;
     cmd.from_external = true;
-    cmd.timestamp = this->node->get_clock()->now().nanoseconds() / 1000;
+    cmd.timestamp = this->control_node->get_clock()->now().nanoseconds() / 1000;
     this->vehicle_command_publisher_->publish(cmd);
-    RCLCPP_DEBUG(this->node->get_logger(), "Arming");
+    RCLCPP_DEBUG(this->control_node->get_logger(), "Arming");
 }
 
 void Control::setTrajSetpoint(float x, float y, float z, float yaw)
 {
     this->traj_target_.position = {x, y, z};
     this->traj_target_.yaw = yaw;
-    this->traj_target_.timestamp = this->node->get_clock()->now().nanoseconds() / 1000;
+    this->traj_target_.timestamp = this->control_node->get_clock()->now().nanoseconds() / 1000;
 }
 
 void Control::setHeight(float h)

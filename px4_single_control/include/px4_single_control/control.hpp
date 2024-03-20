@@ -28,7 +28,7 @@
 using namespace std::chrono_literals;
 
 #define TOPIC_INITIALIZER(TOPIC_NAME) \
-    ((!instance_id && !need_prefix) ? \
+    ((!ros_instance_id_ && !need_prefix) ? \
      get_##TOPIC_NAME##_topic() : \
      (vehicle_name_ + get_##TOPIC_NAME##_topic()))
 
@@ -43,24 +43,20 @@ class Control {
         using TFStampedTy = geometry_msgs::msg::TransformStamped;
         using GoalTfTy = TFStampedTy;
 
-        Control(const std::string &node_name,
-                const uint16_t instance_id = 0,
-                bool need_prefix = false,
-                const std::string &vehicle_prefix = "px4_",
-                const std::string &commanding_frame = "base_link",
-                float default_height = 10) :
-            ros_instance_id_(instance_id), mavlink_system_id_(1 + instance_id),
-            commanding_frame_(commanding_frame),
-            vehicle_name_(vehicle_prefix + std::to_string(instance_id)),
+        Control(rclcpp::Node::SharedPtr node, bool need_prefix = false) :
+            control_node(node),
+            ros_instance_id_(node->get_parameter("instance_id").as_int()),
+            mavlink_system_id_(1 + ros_instance_id_),
+            commanding_frame_(node->get_parameter("commanding_frame").as_string()),
+            vehicle_name_(node->get_parameter("vehicle_prefix").as_string() +
+                    std::to_string(ros_instance_id_)),
             frame_(vehicle_name_ + "_link"),
-            height_(default_height),
+            height_(node->get_parameter("initial_height").as_double()),
             offboard_control_mode_topic_(TOPIC_INITIALIZER(offboard_control_mode)),
             vehicle_command_topic_(TOPIC_INITIALIZER(vehicle_command)),
             trajectory_setpoint_topic_(TOPIC_INITIALIZER(trajectory_setpoint)),
             vehicle_odometry_topic_(TOPIC_INITIALIZER(vehicle_odometry)),
             update_trajectory_target_topic_(TOPIC_INITIALIZER(update_trajectory_target)) {
-
-                node = std::make_shared<rclcpp::Node>(node_name);
 
                 offboard_control_mode_profile_.position = true;
                 offboard_control_mode_profile_.velocity = false;
@@ -69,15 +65,15 @@ class Control {
                 offboard_control_mode_profile_.body_rate = false;
 
                 offboard_control_mode_publisher_ =
-                    node->create_publisher<OffCtrlModeTy>(
+                    control_node->create_publisher<OffCtrlModeTy>(
                             offboard_control_mode_topic_,
                             rclcpp::SystemDefaultsQoS());
                 vehicle_command_publisher_ =
-                    node->create_publisher<VehCmdTy>(
+                    control_node->create_publisher<VehCmdTy>(
                             vehicle_command_topic_,
                             rclcpp::SystemDefaultsQoS());
                 trajectory_setpoint_publisher_ =
-                    node->create_publisher<TrajSetptTy>(
+                    control_node->create_publisher<TrajSetptTy>(
                             trajectory_setpoint_topic_,
                             rclcpp::SystemDefaultsQoS());
 
@@ -89,19 +85,19 @@ class Control {
                             this->offboard_control_mode_profile_);
 
                     this->traj_target_.timestamp =
-                        this->node->get_clock()->now().nanoseconds() / 1000;
+                        this->control_node->get_clock()->now().nanoseconds() / 1000;
                     trajectory_setpoint_publisher_->publish(this->traj_target_);
 
-                    RCLCPP_DEBUG(this->node->get_logger(),
+                    RCLCPP_DEBUG(this->control_node->get_logger(),
                             "Offboard updated: Pose {%f, %f, %f}",
                             this->traj_target_.position[0], this->traj_target_.position[1],
                             this->traj_target_.position[2]);
                 };
 
-                heartbeat_timer_ = node->create_wall_timer(200ms, heartbeat_cb);
+                heartbeat_timer_ = control_node->create_wall_timer(200ms, heartbeat_cb);
 
                 update_pose_publisher_ =
-                    node->create_publisher<PoseStampedTy>(vehicle_name_ + "/uranus/local_position",
+                    control_node->create_publisher<PoseStampedTy>(vehicle_name_ + "/uranus/local_position",
                             rclcpp::SensorDataQoS());
                 this->ros_pose_.header.frame_id = "map";
                 auto update_odom = [this](const VehOdomTy &msg) -> void {
@@ -113,7 +109,7 @@ class Control {
                     auto pose_enu = ned_to_enu_local_frame(pose_ned);
                     auto q_enu = px4_to_ros_orientation(q_ned);
 
-                    this->ros_pose_.header.stamp = this->node->get_clock()->now();
+                    this->ros_pose_.header.stamp = this->control_node->get_clock()->now();
                     this->ros_pose_.pose.position.x = pose_enu[0];
                     this->ros_pose_.pose.position.y = pose_enu[1];
                     this->ros_pose_.pose.position.z = pose_enu[2];
@@ -126,7 +122,7 @@ class Control {
                     this->update_pose_publisher_->publish(this->ros_pose_);
                 };
                 update_vehicle_odometry_subscription_ =
-                    this->node->create_subscription<VehOdomTy>(
+                    this->control_node->create_subscription<VehOdomTy>(
                             vehicle_odometry_topic_,
                             rclcpp::SystemDefaultsQoS(), update_odom);
 
@@ -134,19 +130,20 @@ class Control {
                     this->traj_target_ = msg;
                 };
                 update_trajecotry_target_subscription_ =
-                    this->node->create_subscription<TrajSetptTy>(
+                    this->control_node->create_subscription<TrajSetptTy>(
                             update_trajectory_target_topic_,
                             rclcpp::SystemDefaultsQoS(), update_trajectory_target);
 
 #ifdef URANUS_DEBUG
-                odometry_tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*node);
+                odometry_tf_broadcaster_ =
+                    std::make_unique<tf2_ros::TransformBroadcaster>(*control_node);
                 auto update_tf = [this](const VehOdomTy &msg) -> void {
                     using namespace Eigen;
                     using namespace frame_transforms;
 
                     geometry_msgs::msg::TransformStamped t;
 
-                    t.header.stamp = this->node->get_clock()->now();
+                    t.header.stamp = this->control_node->get_clock()->now();
                     t.header.frame_id = "map";
                     t.child_frame_id = this->frame_;
 
@@ -168,11 +165,11 @@ class Control {
                     this->odometry_tf_broadcaster_->sendTransform(t);
                 };
                 update_odometry_tf_ =
-                    this->node->create_subscription<VehOdomTy>(
+                    this->control_node->create_subscription<VehOdomTy>(
                             *px4_topic::get_vehicle_odometry_topic(vehicle_name_),
                             rclcpp::SystemDefaultsQoS(), update_tf);
 #endif
-                goal_pose_buffer_ = std::make_unique<tf2_ros::Buffer>(node->get_clock());
+                goal_pose_buffer_ = std::make_unique<tf2_ros::Buffer>(control_node->get_clock());
                 goal_listener_ = std::make_shared<tf2_ros::TransformListener>(*goal_pose_buffer_);
 
                 auto setting_goal = [this] () -> void {
@@ -184,7 +181,7 @@ class Control {
                         t = this->goal_pose_buffer_->lookupTransform(
                                 "map", this->commanding_frame_, tf2::TimePointZero);
                     } catch (const tf2::TransformException &e) {
-                        RCLCPP_ERROR(this->node->get_logger(),
+                        RCLCPP_ERROR(this->control_node->get_logger(),
                                 "Failed to fetch transform %s -> %s",
                                 "map",
                                 this->commanding_frame_.c_str());
@@ -200,7 +197,7 @@ class Control {
 
                     Vector3d pose_ned = enu_to_ned_local_frame(pose_enu);
 
-                    RCLCPP_DEBUG(this->node->get_logger(), "Setting pose: {%f, %f, %f}",
+                    RCLCPP_DEBUG(this->control_node->get_logger(), "Setting pose: {%f, %f, %f}",
                             pose_ned[0], pose_ned[1], pose_ned[2]);
                     setTrajSetpoint(pose_ned[0], pose_ned[1], -this->height_,
                             frame_transforms::utils::quaternion::quaternion_get_yaw(q_ned));
@@ -211,9 +208,10 @@ class Control {
                     this->arm();
                     // Delay for 5 seconds to takeoff and turn off the timer
                     this->oneoff_timer_->cancel();
-                    this->goal_listener_timer_ = this->node->create_wall_timer(500ms, setting_goal);
+                    this->goal_listener_timer_ =
+                        this->control_node->create_wall_timer(500ms, setting_goal);
                 };
-                oneoff_timer_ = node->create_wall_timer(5s, takeoff);
+                oneoff_timer_ = control_node->create_wall_timer(5s, takeoff);
 
             }
 
@@ -226,7 +224,7 @@ class Control {
         void setTrajSetpoint(float x, float y, float z, float yaw);
         void setHeight(float h);
 
-        rclcpp::Node::SharedPtr node;
+        rclcpp::Node::SharedPtr control_node;
 
     private:
         const uint16_t ros_instance_id_;
