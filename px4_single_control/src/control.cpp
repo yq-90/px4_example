@@ -23,7 +23,7 @@ void Control::setOffboardMode()
     cmd.param1 = 1;
     cmd.param2 = 6;
     cmd.command = VehCmdTy::VEHICLE_CMD_DO_SET_MODE;
-    cmd.target_system = 1;
+    cmd.target_system = mavlink_system_id_;
     cmd.target_component = 1;
     cmd.source_system = 1;
     cmd.source_component = 1;
@@ -38,18 +38,19 @@ void Control::arm()
     VehCmdTy cmd{};
     cmd.param1 = VehCmdTy::ARMING_ACTION_ARM;
     cmd.command = VehCmdTy::VEHICLE_CMD_COMPONENT_ARM_DISARM;
-    cmd.target_system = 1;
+    cmd.target_system = mavlink_system_id_;
     cmd.target_component = 1;
     cmd.source_system = 1;
     cmd.source_component = 1;
     cmd.from_external = true;
     cmd.timestamp = this->node->get_clock()->now().nanoseconds() / 1000;
     this->vehicle_command_publisher_->publish(cmd);
-    RCLCPP_DEBUG(this->node->get_logger(), "Arming");
+    RCLCPP_INFO(this->node->get_logger(), "Arming");
 }
 
-void Control::setTrajSetpoint(float x, float y, float z)
+void Control::setTrajSetpoint(float x, float y, float z, float yaw)
 {
     this->traj_target_.position = {x, y, z};
+    this->traj_target_.yaw = yaw;
     this->traj_target_.timestamp = this->node->get_clock()->now().nanoseconds() / 1000;
 }
