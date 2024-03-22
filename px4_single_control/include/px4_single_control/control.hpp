@@ -43,7 +43,9 @@ class Control {
         using TFStampedTy = geometry_msgs::msg::TransformStamped;
         using GoalTfTy = TFStampedTy;
 
-        Control(rclcpp::Node::SharedPtr node, bool need_prefix = false) :
+        Control(rclcpp::Node::SharedPtr node,
+                Eigen::Matrix4d &formation_tf,
+                bool need_prefix = false) :
             control_node(node),
             ros_instance_id_(node->get_parameter("instance_id").as_int()),
             mavlink_system_id_(1 + ros_instance_id_),
@@ -52,6 +54,8 @@ class Control {
                     std::to_string(ros_instance_id_)),
             frame_(vehicle_name_ + "_link"),
             height_(node->get_parameter("initial_height").as_double()),
+            formation_transform_(formation_tf),
+            ground_zero_transform_(Eigen::Matrix4d::Identity()),
             offboard_control_mode_topic_(TOPIC_INITIALIZER(offboard_control_mode)),
             vehicle_command_topic_(TOPIC_INITIALIZER(vehicle_command)),
             trajectory_setpoint_topic_(TOPIC_INITIALIZER(trajectory_setpoint)),
@@ -96,6 +100,7 @@ class Control {
 
                 heartbeat_timer_ = control_node->create_wall_timer(200ms, heartbeat_cb);
 
+                // FIXME Parameterize hard coded topic name
                 update_pose_publisher_ =
                     control_node->create_publisher<PoseStampedTy>(vehicle_name_ + "/uranus/local_position",
                             rclcpp::SensorDataQoS());
@@ -193,14 +198,28 @@ class Control {
                             t.transform.rotation.y, t.transform.rotation.z);
                     auto pose_enu = Vector3d({t.transform.translation.x,
                         t.transform.translation.y, t.transform.translation.z});
-                    Quaterniond q_ned = ros_to_px4_orientation(q_enu);
+                    Quaterniond gz_q_ned = ros_to_px4_orientation(q_enu);
+                    Vector3d gz_pose_ned = enu_to_ned_local_frame(pose_enu);
 
-                    Vector3d pose_ned = enu_to_ned_local_frame(pose_enu);
+                    // transform matrix from the ground zero vectors (translation & rotation)
+                    this->ground_zero_transform_.translation() = gz_pose_ned;
+                    this->ground_zero_transform_.translation().z() = -this->height_;
+                    this->ground_zero_transform_.linear() = gz_q_ned.toRotationMatrix();
 
-                    RCLCPP_DEBUG(this->control_node->get_logger(), "Setting pose: {%f, %f, %f}",
-                            pose_ned[0], pose_ned[1], pose_ned[2]);
-                    setTrajSetpoint(pose_ned[0], pose_ned[1], -this->height_,
-                            frame_transforms::utils::quaternion::quaternion_get_yaw(q_ned));
+                    Affine3d steering_trans =
+                        this->ground_zero_transform_ * this->formation_transform_;
+                    const Affine3d::TranslationPart &steering_pose = steering_trans.translation();
+
+                    RCLCPP_DEBUG(this->control_node->get_logger(),
+                            "Ground zero pose (in ned): {%f, %f, %f}",
+                            gz_pose_ned[0], gz_pose_ned[1], gz_pose_ned[2]);
+                    RCLCPP_DEBUG(this->control_node->get_logger(),
+                            "Steering pose (in ned): {%f, %f, %f}",
+                            steering_pose[0], steering_pose[1], steering_pose[2]);
+
+                    setTrajSetpoint(steering_pose[0], steering_pose[1], steering_pose[2],
+                            frame_transforms::utils::quaternion::quaternion_get_yaw(
+                                Quaterniond(this->ground_zero_transform_.rotation())));
                 };
 
                 auto takeoff = [this, setting_goal]() -> void {
@@ -236,12 +255,6 @@ class Control {
 
         float height_;
 
-        const std::string offboard_control_mode_topic_;
-        const std::string vehicle_command_topic_;
-        const std::string trajectory_setpoint_topic_;
-        const std::string vehicle_odometry_topic_;
-        const std::string update_trajectory_target_topic_;
-
         rclcpp::TimerBase::SharedPtr heartbeat_timer_;
         rclcpp::TimerBase::SharedPtr oneoff_timer_;
 
@@ -266,6 +279,18 @@ class Control {
         rclcpp::TimerBase::SharedPtr goal_listener_timer_;
         std::unique_ptr<tf2_ros::Buffer> goal_pose_buffer_;
         std::shared_ptr<tf2_ros::TransformListener> goal_listener_;
+
+        // The spatial offset of the drone wrt the ground zero point
+        // Non-const for future extension upon dynamic formation change
+        Eigen::Affine3d formation_transform_;
+        Eigen::Affine3d ground_zero_transform_;
+
+        // Topic constants
+        const std::string offboard_control_mode_topic_;
+        const std::string vehicle_command_topic_;
+        const std::string trajectory_setpoint_topic_;
+        const std::string vehicle_odometry_topic_;
+        const std::string update_trajectory_target_topic_;
 };
 
 #endif
