@@ -32,6 +32,8 @@ using namespace std::chrono_literals;
      get_##TOPIC_NAME##_topic() : \
      (vehicle_name_ + get_##TOPIC_NAME##_topic()))
 
+const Eigen::IOFormat clean_fmt(4, 0, ", ", "\n", "[", "]");
+
 class Control {
     public:
         using OffCtrlModeTy = px4_msgs::msg::OffboardControlMode;
@@ -44,7 +46,8 @@ class Control {
         using GoalTfTy = TFStampedTy;
 
         Control(rclcpp::Node::SharedPtr node,
-                Eigen::Matrix4d &formation_tf,
+                const Eigen::Matrix4d &init_tf,
+                const Eigen::Matrix4d &formation_tf,
                 bool need_prefix = false) :
             control_node(node),
             ros_instance_id_(node->get_parameter("instance_id").as_int()),
@@ -54,6 +57,7 @@ class Control {
                     std::to_string(ros_instance_id_)),
             frame_(vehicle_name_ + "_link"),
             height_(node->get_parameter("initial_height").as_double()),
+            initial_transform_(init_tf),
             formation_transform_(formation_tf),
             ground_zero_transform_(Eigen::Matrix4d::Identity()),
             offboard_control_mode_topic_(TOPIC_INITIALIZER(offboard_control_mode)),
@@ -107,12 +111,17 @@ class Control {
                 this->ros_pose_.header.frame_id = "map";
                 auto update_odom = [this](const VehOdomTy &msg) -> void {
                     using namespace frame_transforms;
+                    using namespace Eigen;
 
-                    Eigen::Vector3d pose_ned({msg.position[0], msg.position[1], msg.position[2]});
-                    Eigen::Quaterniond q_ned(msg.q[0], msg.q[1], msg.q[2], msg.q[3]);
+                    Affine3d map_offset{Matrix4d::Identity()};
+                    map_offset.translation() = Vector3d({msg.position[0], msg.position[1],
+                        msg.position[2]});
+                    map_offset.linear() =
+                        Quaterniond(msg.q[0], msg.q[1], msg.q[2], msg.q[3]).toRotationMatrix();
+                    map_offset = this->initial_transform_ * map_offset;
 
-                    auto pose_enu = ned_to_enu_local_frame(pose_ned);
-                    auto q_enu = px4_to_ros_orientation(q_ned);
+                    auto pose_enu = ned_to_enu_local_frame(Vector3d(map_offset.translation()));
+                    auto q_enu = px4_to_ros_orientation(Quaterniond(map_offset.linear()));
 
                     this->ros_pose_.header.stamp = this->control_node->get_clock()->now();
                     this->ros_pose_.pose.position.x = pose_enu[0];
@@ -193,33 +202,35 @@ class Control {
                         return ;
                     }
 
-                    auto q_enu = Quaterniond(
-                            t.transform.rotation.w, t.transform.rotation.x,
-                            t.transform.rotation.y, t.transform.rotation.z);
-                    auto pose_enu = Vector3d({t.transform.translation.x,
-                        t.transform.translation.y, t.transform.translation.z});
-                    Quaterniond gz_q_ned = ros_to_px4_orientation(q_enu);
-                    Vector3d gz_pose_ned = enu_to_ned_local_frame(pose_enu);
-
                     // transform matrix from the ground zero vectors (translation & rotation)
-                    this->ground_zero_transform_.translation() = gz_pose_ned;
+                    this->ground_zero_transform_.translation() = enu_to_ned_local_frame(
+                            Vector3d({t.transform.translation.x,
+                                t.transform.translation.y, t.transform.translation.z}));
                     this->ground_zero_transform_.translation().z() = -this->height_;
-                    this->ground_zero_transform_.linear() = gz_q_ned.toRotationMatrix();
+                    this->ground_zero_transform_.linear() = ros_to_px4_orientation(Quaterniond(
+                                t.transform.rotation.w, t.transform.rotation.x,
+                                t.transform.rotation.y, t.transform.rotation.z)).toRotationMatrix();
 
+                    // If we want drone's position to be absolute, use
+                    // this->formation_transform_ * this->ground_zero_transform
                     Affine3d steering_trans =
                         this->ground_zero_transform_ * this->formation_transform_;
-                    const Affine3d::TranslationPart &steering_pose = steering_trans.translation();
+                    steering_trans = this->initial_transform_.inverse() * steering_trans;
+                    const Affine3d::TranslationPart steering_pose = steering_trans.translation();
+
+                    std::stringstream ss;
+                    ss << steering_trans.matrix().format(clean_fmt);
 
                     RCLCPP_DEBUG(this->control_node->get_logger(),
-                            "Ground zero pose (in ned): {%f, %f, %f}",
-                            gz_pose_ned[0], gz_pose_ned[1], gz_pose_ned[2]);
+                            "UAV%d Steering transform: \n%s",
+                            this->ros_instance_id_, ss.str().c_str());
                     RCLCPP_DEBUG(this->control_node->get_logger(),
                             "Steering pose (in ned): {%f, %f, %f}",
                             steering_pose[0], steering_pose[1], steering_pose[2]);
 
                     setTrajSetpoint(steering_pose[0], steering_pose[1], steering_pose[2],
                             frame_transforms::utils::quaternion::quaternion_get_yaw(
-                                Quaterniond(this->ground_zero_transform_.rotation())));
+                                Quaterniond(steering_trans.linear())));
                 };
 
                 auto takeoff = [this, setting_goal]() -> void {
@@ -280,6 +291,7 @@ class Control {
         std::unique_ptr<tf2_ros::Buffer> goal_pose_buffer_;
         std::shared_ptr<tf2_ros::TransformListener> goal_listener_;
 
+        const Eigen::Affine3d initial_transform_;
         // The spatial offset of the drone wrt the ground zero point
         // Non-const for future extension upon dynamic formation change
         Eigen::Affine3d formation_transform_;
