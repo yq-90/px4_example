@@ -19,7 +19,7 @@ static void initialize_params(rclcpp::Node::SharedPtr node)
 {
     node->declare_parameter<int>("instance_id", 0);
     node->declare_parameter<double>("initial_height", 10.0);
-    node->declare_parameter("commanding_frame", "base_link");
+    node->declare_parameter("commanding_frame", "uranus/ground_zero");
     node->declare_parameter("vehicle_prefix", "px4_");
     // The transform matrix of the drone's initial position
     node->declare_parameter("initial_transform", std::vector<double>{

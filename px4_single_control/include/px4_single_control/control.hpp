@@ -15,6 +15,7 @@
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "geometry_msgs/msg/transform_stamped.hpp"
 #include "tf2_ros/transform_broadcaster.h"
+#include "tf2_ros/static_transform_broadcaster.h"
 #include "tf2_ros/buffer.h"
 #include "tf2_ros/transform_listener.h"
 
@@ -55,7 +56,8 @@ class Control {
             commanding_frame_(node->get_parameter("commanding_frame").as_string()),
             vehicle_name_(node->get_parameter("vehicle_prefix").as_string() +
                     std::to_string(ros_instance_id_)),
-            frame_(vehicle_name_ + "_link"),
+            frame_(vehicle_name_ + "/base_link"),
+            odom_frame_(vehicle_name_ + "/odom"),
             height_(node->get_parameter("initial_height").as_double()),
             initial_transform_(init_tf),
             formation_transform_(formation_tf),
@@ -87,6 +89,33 @@ class Control {
 
                 traj_target_.position = {0.0, 0.0, -height_};
 
+                initial_odometry_tf_broadcaster_ =
+                    std::make_shared<tf2_ros::StaticTransformBroadcaster>(*control_node);
+                geometry_msgs::msg::TransformStamped init_odom_tf;
+
+                Eigen::Affine3d init_tf_ned(initial_transform_);
+                Eigen::Vector3d init_pose_enu =
+                    frame_transforms::ned_to_enu_local_frame(Eigen::Vector3d {
+                        init_tf_ned.translation()[0],
+                        init_tf_ned.translation()[1],
+                        init_tf_ned.translation()[2]
+                    });
+
+                init_odom_tf.header.stamp = this->control_node->get_clock()->now();
+                init_odom_tf.header.frame_id = "map";
+                init_odom_tf.child_frame_id = this->odom_frame_;
+
+                init_odom_tf.transform.translation.x = init_pose_enu[0];
+                init_odom_tf.transform.translation.y = init_pose_enu[1];
+                init_odom_tf.transform.translation.z = init_pose_enu[2];
+
+                init_odom_tf.transform.rotation.x = 0;
+                init_odom_tf.transform.rotation.y = 0;
+                init_odom_tf.transform.rotation.z = 0;
+                init_odom_tf.transform.rotation.w = 1;
+
+                initial_odometry_tf_broadcaster_->sendTransform(init_odom_tf);
+
                 auto heartbeat_cb = [this]() -> void {
                     this->updateOffboardControlModeTimestamp();
                     offboard_control_mode_publisher_->publish(
@@ -104,42 +133,6 @@ class Control {
 
                 heartbeat_timer_ = control_node->create_wall_timer(200ms, heartbeat_cb);
 
-                // FIXME Parameterize hard coded topic name
-                update_pose_publisher_ =
-                    control_node->create_publisher<PoseStampedTy>(vehicle_name_ + "/uranus/local_position",
-                            rclcpp::SensorDataQoS());
-                this->ros_pose_.header.frame_id = "map";
-                auto update_odom = [this](const VehOdomTy &msg) -> void {
-                    using namespace frame_transforms;
-                    using namespace Eigen;
-
-                    Affine3d map_offset{Matrix4d::Identity()};
-                    map_offset.translation() = Vector3d({msg.position[0], msg.position[1],
-                        msg.position[2]});
-                    map_offset.linear() =
-                        Quaterniond(msg.q[0], msg.q[1], msg.q[2], msg.q[3]).toRotationMatrix();
-                    map_offset = this->initial_transform_ * map_offset;
-
-                    auto pose_enu = ned_to_enu_local_frame(Vector3d(map_offset.translation()));
-                    auto q_enu = px4_to_ros_orientation(Quaterniond(map_offset.linear()));
-
-                    this->ros_pose_.header.stamp = this->control_node->get_clock()->now();
-                    this->ros_pose_.pose.position.x = pose_enu[0];
-                    this->ros_pose_.pose.position.y = pose_enu[1];
-                    this->ros_pose_.pose.position.z = pose_enu[2];
-
-                    this->ros_pose_.pose.orientation.w = q_enu.w();
-                    this->ros_pose_.pose.orientation.x = q_enu.x();
-                    this->ros_pose_.pose.orientation.y = q_enu.y();
-                    this->ros_pose_.pose.orientation.z = q_enu.z();
-
-                    this->update_pose_publisher_->publish(this->ros_pose_);
-                };
-                update_vehicle_odometry_subscription_ =
-                    this->control_node->create_subscription<VehOdomTy>(
-                            vehicle_odometry_topic_,
-                            rclcpp::SystemDefaultsQoS(), update_odom);
-
                 auto update_trajectory_target = [this] (const TrajSetptTy &msg) -> void {
                     this->traj_target_ = msg;
                 };
@@ -148,7 +141,6 @@ class Control {
                             update_trajectory_target_topic_,
                             rclcpp::SystemDefaultsQoS(), update_trajectory_target);
 
-#ifdef URANUS_DEBUG
                 odometry_tf_broadcaster_ =
                     std::make_unique<tf2_ros::TransformBroadcaster>(*control_node);
                 auto update_tf = [this](const VehOdomTy &msg) -> void {
@@ -158,7 +150,7 @@ class Control {
                     geometry_msgs::msg::TransformStamped t;
 
                     t.header.stamp = this->control_node->get_clock()->now();
-                    t.header.frame_id = "map";
+                    t.header.frame_id = this->odom_frame_;
                     t.child_frame_id = this->frame_;
 
                     Quaterniond enu_q = px4_to_ros_orientation(Quaterniond(
@@ -180,9 +172,9 @@ class Control {
                 };
                 update_odometry_tf_ =
                     this->control_node->create_subscription<VehOdomTy>(
-                            *px4_topic::get_vehicle_odometry_topic(vehicle_name_),
+                            this->vehicle_odometry_topic_,
                             rclcpp::SystemDefaultsQoS(), update_tf);
-#endif
+
                 goal_pose_buffer_ = std::make_unique<tf2_ros::Buffer>(control_node->get_clock());
                 goal_listener_ = std::make_shared<tf2_ros::TransformListener>(*goal_pose_buffer_);
 
@@ -263,6 +255,7 @@ class Control {
         const std::string commanding_frame_;
         const std::string vehicle_name_;
         const std::string frame_;
+        const std::string odom_frame_;
 
         float height_;
 
@@ -276,16 +269,11 @@ class Control {
         rclcpp::Publisher<TrajSetptTy>::SharedPtr trajectory_setpoint_publisher_;
         TrajSetptTy traj_target_;
 
-        rclcpp::Publisher<PoseStampedTy>::SharedPtr update_pose_publisher_;
-        rclcpp::Subscription<VehOdomTy>::SharedPtr update_vehicle_odometry_subscription_;
-        PoseStampedTy ros_pose_;
-
         rclcpp::Subscription<TrajSetptTy>::SharedPtr update_trajecotry_target_subscription_;
 
-#ifdef URANUS_DEBUG
         rclcpp::Subscription<VehOdomTy>::SharedPtr update_odometry_tf_;
         std::unique_ptr<tf2_ros::TransformBroadcaster> odometry_tf_broadcaster_;
-#endif
+        std::shared_ptr<tf2_ros::StaticTransformBroadcaster> initial_odometry_tf_broadcaster_;
 
         rclcpp::TimerBase::SharedPtr goal_listener_timer_;
         std::unique_ptr<tf2_ros::Buffer> goal_pose_buffer_;

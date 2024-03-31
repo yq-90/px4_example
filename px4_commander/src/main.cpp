@@ -10,7 +10,7 @@ using namespace std::chrono_literals;
 
 static void initialize_parameters(rclcpp::Node::SharedPtr node)
 {
-    node->declare_parameter("frame", "base_link");
+    node->declare_parameter("frame", "/uranus/ground_zero");
 }
 
 int main(int argc, char ** argv)
