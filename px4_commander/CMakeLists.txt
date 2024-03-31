@@ -13,6 +13,8 @@ find_package(geometry_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(frame_transforms REQUIRED)
 find_package(tf2_eigen REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
 
 # uncomment the following section in order to fill in
 # further dependencies manually.
@@ -25,6 +27,7 @@ target_include_directories(px4_commander PUBLIC
   $<INSTALL_INTERFACE:include>)
 
 target_compile_features(px4_commander PUBLIC c_std_99 cxx_std_20)  # Require C99 and C++20
+
 ament_target_dependencies(
   px4_commander
   "rclcpp"
@@ -33,6 +36,8 @@ ament_target_dependencies(
   "sensor_msgs"
   "frame_transforms"
   "tf2_eigen"
+  "tf2_ros"
+  "tf2_geometry_msgs"
 )
 
 install(TARGETS px4_commander
